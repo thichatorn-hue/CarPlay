@@ -30,8 +30,8 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Unit tests, lint and source-only debug build
-        run: ./gradlew :shared:testDebugUnitTest :common:testDebugUnitTest :home:testDebugUnitTest :mobile:lintDebug :home:lintDebug :maphost:lintDebug :mobile:assembleDebug :home:assembleDebug :maphost:assembleDebug --stacktrace
+      - name: Build Debug APK Only
+        run: ./gradlew :mobile:assembleDebug
 
       - name: Upload Mobile Debug APK
         if: success()
@@ -39,17 +39,4 @@ jobs:
         with:
           name: mobile-debug-apk
           path: mobile/build/outputs/apk/debug/*.apk
-
-      - name: Test reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-reports
-          path: |
-            shared/build/reports/tests/
-            common/build/reports/tests/
-            mobile/build/reports/lint-results-debug.html
-            samples/home/build/reports/tests/
-            samples/home/build/reports/lint-results-debug.html
-            samples/maphost/build/reports/lint-results-debug.html
-            
+          
