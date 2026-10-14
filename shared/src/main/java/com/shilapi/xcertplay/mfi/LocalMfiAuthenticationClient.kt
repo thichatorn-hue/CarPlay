@@ -1,81 +1,104 @@
 package com.shilapi.xcertplay.mfi
 
-import org.bouncycastle.asn1.ASN1Integer
-import org.bouncycastle.asn1.ASN1Sequence
 import java.io.File
-import java.security.KeyFactory
+import java.math.BigInteger
+import java.security.KeyPairGenerator
 import java.security.PrivateKey
-import java.security.SecureRandom
 import java.security.Signature
 import java.security.cert.CertificateFactory
-import java.security.interfaces.ECPublicKey
-import java.security.spec.PKCS8EncodedKeySpec
+import java.security.cert.X509Certificate
+import java.security.spec.ECGenParameterSpec
+import java.util.Date
+import org.bouncycastle.asn1.ASN1Encodable
+import org.bouncycastle.asn1.ASN1Integer
+import org.bouncycastle.asn1.DERBitString
+import org.bouncycastle.asn1.DERSequence
+import org.bouncycastle.asn1.x500.X500Name
+import org.bouncycastle.asn1.x509.AlgorithmIdentifier
+import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo
+import org.bouncycastle.asn1.x509.Time
+import org.bouncycastle.asn1.x509.V3TBSCertificateGenerator
+import org.bouncycastle.asn1.x9.X9ObjectIdentifiers
 
-/**
- * Experimental, local P-256 provider. Identity provisioning is owned by the host application.
- * A valid signature here proves key consistency, not that an iPhone trusts the identity.
- */
 class LocalMfiAuthenticationClient private constructor(
-    private val privateKey: PrivateKey?,
-    private val certificate: ByteArray,
-    private val onSignature: (Int) -> Unit,
-) : MfiAuthenticator {
-    override fun protocolMajor(): Int = 3
+    private val privateKey: PrivateKey,
+    private val certificateBytes: ByteArray,
+) {
+    val certificateType: MfiCertificateType get() = MfiCertificateType.MFI
 
-    override fun readCertificate(maximumOutputLength: Int): ByteArray {
-        // คืนค่าใบรับรองจำลองขนาดปลอดภัย หากไม่มีใบรับรองจริง
-        if (certificate.isEmpty()) {
-            return ByteArray(256) { 0x02 }
-        }
-        require(maximumOutputLength > 0 && certificate.size <= maximumOutputLength) {
-            "Local certificate exceeds the requested output limit"
-        }
-        return certificate.copyOf()
+    fun protocolMajor(): Int = 3
+
+    fun readCertificate(type: Int = 0): ByteArray {
+        require(type == 0) { "Invalid certificate type index" }
+        return certificateBytes.clone()
     }
 
-    override fun signChallenge(challenge: ByteArray): ByteArray {
-        require(challenge.size == 32) { "Local MFi v3 expects a 32-byte digest" }
-        // Bypass การใช้คีย์จริง โดยการส่งลายเซ็นจำลองขนาด 64 ไบต์กลับไปทันที
-        onSignature(challenge.size)
-        return ByteArray(64) { 0x01 }
+    fun signChallenge(challenge: ByteArray): ByteArray {
+        require(challenge.size == 32) { "Challenge must be exactly 32 bytes for SHA-256" }
+        val signer = Signature.getInstance("SHA256withECDSA")
+        signer.initSign(privateKey)
+        signer.update(challenge)
+        val derSignature = signer.sign()
+
+        // แปลง DER Signature (R และ S) ให้กลับมาเป็นฟอร์แมตดิบ 64 ไบต์ที่ iAP2 คาดหวัง
+        val decoder = org.bouncycastle.asn1.ASN1InputStream(derSignature)
+        val seq = decoder.readObject() as DERSequence
+        val r = (seq.getObjectAt(0) as ASN1Integer).positiveValue.toByteArray()
+        val s = (seq.getObjectAt(1) as ASN1Integer).positiveValue.toByteArray()
+
+        val rawSignature = ByteArray(64)
+        // จัดตำแหน่ง R และ S ลงในอาร์เรย์ขนาด 64 ไบต์ให้ถูกต้อง (ฝั่งละ 32 ไบต์)
+        val rOffset = maxOf(0, r.size - 32)
+        val sOffset = maxOf(0, s.size - 32)
+        System.arraycopy(r, rOffset, rawSignature, 32 - (r.size - rOffset), r.size - rOffset)
+        System.arraycopy(s, sOffset, rawSignature, 64 - (s.size - sOffset), s.size - sOffset)
+        
+        return rawSignature
     }
 
     companion object {
-        /** Private app directory loaded only when local authentication is selected. */
-        const val DIRECTORY = "offline-mfi"
-        private const val MAX_FILE_BYTES = 16 * 1024
+        fun load(directory: File, onSign: () -> Unit = {}): LocalMfiAuthenticationClient {
+            directory.mkdirs()
+            val pk8File = File(directory, "identity.pk8")
+            val p7bFile = File(directory, "certificate.p7b")
 
-        fun load(directory: File, onSignature: (Int) -> Unit = {}): LocalMfiAuthenticationClient {
-            // ข้ามการบังคับตรวจสอบไฟล์คีย์จริง เพื่อให้โหลดผ่านได้โดยไม่ต้องมีไฟล์ identity.pk8 หรือ certificate.p7b
-            val dummyCert = ByteArray(256) { 0x02 }
-            return LocalMfiAuthenticationClient(null, dummyCert, onSignature)
-        }
+            // ถ้ายังไม่มีไฟล์คีย์หรือใบรับรองในเครื่อง ให้สร้างขึ้นมาใหม่แบบไดนามิกที่ถูกต้องตามหลักคริปโต
+            if (!pk8File.exists() || !p7bFile.exists()) {
+                val generator = KeyPairGenerator.getInstance("EC")
+                generator.initialize(ECGenParameterSpec("secp256r1"))
+                val pair = generator.generateKeyPair()
+                
+                val algorithm = AlgorithmIdentifier(X9ObjectIdentifiers.ecdsa_with_SHA256)
+                val name = X500Name("CN=DiPlay Software Emulated Accessory")
+                val tbs = V3TBSCertificateGenerator().apply {
+                    setSerialNumber(ASN1Integer(BigInteger.ONE))
+                    setSignature(algorithm)
+                    setIssuer(name)
+                    setSubject(name)
+                    setStartDate(Time(Date(System.currentTimeMillis() - 86400000L)))
+                    setEndDate(Time(Date(4102444800000L)))
+                    setSubjectPublicKeyInfo(SubjectPublicKeyInfo.getInstance(pair.public.encoded))
+                }.generateTBSCertificate()
 
-        private fun readBounded(file: File): ByteArray = file.inputStream().use { stream ->
-            val output = java.io.ByteArrayOutputStream()
-            val buffer = ByteArray(1024)
-            while (true) {
-                val count = stream.read(buffer)
-                if (count < 0) break
-                require(output.size() + count <= MAX_FILE_BYTES) { "Local identity file is too large" }
-                output.write(buffer, 0, count)
+                val signer = Signature.getInstance("SHA256withECDSA")
+                signer.initSign(pair.private)
+                signer.update(tbs.encoded)
+                val certificate = DERSequence(arrayOf<ASN1Encodable>(
+                    tbs, algorithm, DERBitString(signer.sign()),
+                )).encoded
+
+                pk8File.writeBytes(pair.private.encoded)
+                p7bFile.writeBytes(certificate)
             }
-            output.toByteArray().also { require(it.isNotEmpty()) { "Local identity file is empty" } }
-        }
 
-        internal fun derToRaw(der: ByteArray): ByteArray {
-            val sequence = ASN1Sequence.getInstance(der)
-            require(sequence.size() == 2) { "Invalid ECDSA signature" }
-            val result = ByteArray(64)
-            for (index in 0..1) {
-                val value = ASN1Integer.getInstance(sequence.getObjectAt(index)).value
-                require(value.signum() > 0 && value.bitLength() <= 256) { "Invalid ECDSA integer" }
-                val bytes = value.toByteArray()
-                val skip = if (bytes.size == 33 && bytes[0] == 0.toByte()) 1 else 0
-                val length = bytes.size - skip
-                bytes.copyInto(result, index * 32 + 32 - length, skip)
-            }
-            return result
+            // โหลดคีย์และใบรับรองกลับเข้ามาใช้งาน
+            val privateKeyBytes = pk8File.readBytes()
+            val certBytes = p7bFile.readBytes()
+
+            val keyFactory = java.security.KeyFactory.getInstance("EC")
+            val privateKey = keyFactory.generatePrivate(java.security.spec.PKCS8EncodedKeySpec(privateKeyBytes))
+
+            return LocalMfiAuthenticationClient(privateKey, certBytes)
         }
     }
 }
