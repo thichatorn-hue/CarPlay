@@ -20,22 +20,20 @@ import org.bouncycastle.asn1.x509.Time
 import org.bouncycastle.asn1.x509.V3TBSCertificateGenerator
 import org.bouncycastle.asn1.x9.X9ObjectIdentifiers
 
-// สืบทอด MfiAuthenticationClient ให้ตรงกับที่ CarPlayController คาดหวัง
 class LocalMfiAuthenticationClient private constructor(
     private val privateKey: PrivateKey,
     private val certificateBytes: ByteArray,
-) : MfiAuthenticationClient {
-    
-    override val certificateType: MfiCertificateType get() = MfiCertificateType.MFI
+) {
+    val certificateType: MfiCertificateType get() = MfiCertificateType.MFI
 
-    override fun protocolMajor(): Int = 3
+    fun protocolMajor(): Int = 3
 
-    override fun readCertificate(type: Int): ByteArray {
+    fun readCertificate(type: Int = 0): ByteArray {
         require(type == 0) { "Invalid certificate type index" }
         return certificateBytes.clone()
     }
 
-    override fun signChallenge(challenge: ByteArray): ByteArray {
+    fun signChallenge(challenge: ByteArray): ByteArray {
         require(challenge.size == 32) { "Challenge must be exactly 32 bytes for SHA-256" }
         
         val signer = Signature.getInstance("SHA256withECDSA")
