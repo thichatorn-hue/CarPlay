@@ -1,7 +1,5 @@
-plugins {
-    id("com.android.library")
-    id("org.jetbrains.kotlin.android")
-}
+apply(plugin = "com.android.library")
+apply(plugin = "org.jetbrains.kotlin.android")
 
 android {
     namespace = "com.shilapi.xcertplay.common"
