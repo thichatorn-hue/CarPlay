@@ -8,23 +8,48 @@ import android.hardware.SensorManager
 import android.os.Handler
 import android.os.Looper
 
-/** Activity-owned adapter. Sensor events and delayed transitions share the main looper. */
-internal class AndroidAmbientLight(context: Context) :
-    CarPlayNightModeController.LightSource, SensorEventListener {
-    private val manager = context.getSystemService(SensorManager::class.java)
-    private val sensor = manager?.getDefaultSensor(Sensor.TYPE_LIGHT)
-    private val handler = Handler(Looper.getMainLooper())
+/**
+ * Activity-owned adapter.
+ * Sensor events and delayed transitions share the main looper.
+ */
+internal class AndroidAmbientLight(
+    context: Context
+) : CarPlayNightModeController.LightSource, SensorEventListener {
+
+    private val manager: SensorManager? =
+        context.getSystemService(SensorManager::class.java)
+
+    private val sensor: Sensor? =
+        manager?.getDefaultSensor(Sensor.TYPE_LIGHT)
+
+    private val handler: Handler =
+        Handler(Looper.getMainLooper())
+
     private var onLux: ((Float) -> Unit)? = null
-    override val available: Boolean get() = sensor != null
+
+    override val available: Boolean
+        get() = sensor != null
 
     override fun start(onLux: (Float) -> Unit): Boolean {
         stop()
-        val light = sensor ?: return false
+
+        val light: Sensor = sensor ?: return false
+
         this.onLux = onLux
-        val registered = runCatching {
-            manager?.registerListener(this, light, SensorManager.SENSOR_DELAY_NORMAL, handler) == true
+
+        val registered: Boolean = runCatching {
+            manager?.registerListener(
+                this,
+                light,
+                SensorManager.SENSOR_DELAY_NORMAL,
+                handler
+            ) == true
         }.getOrDefault(false)
-        if (!registered) stop()
+
+        if (!registered) {
+            stop()
+        }
+
         return registered
     }
 
@@ -35,18 +60,37 @@ internal class AndroidAmbientLight(context: Context) :
 
     override fun onSensorChanged(event: SensorEvent) {
         if (event.sensor.type == Sensor.TYPE_LIGHT) {
-            onLux?.invoke(event.values.firstOrNull() ?: Float.NaN)
+            val lux: Float =
+                event.values.firstOrNull() ?: Float.NaN
+
+            onLux?.invoke(lux)
         }
     }
 
-    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+    override fun onAccuracyChanged(
+        sensor: Sensor?,
+        accuracy: Int
+    ) {
+        // No action required.
+    }
 }
 
-internal class MainThreadNightModeScheduler : CarPlayNightModeController.Scheduler {
-    private val handler = Handler(Looper.getMainLooper())
-    override fun postDelayed(task: Runnable, delayMillis: Long) {
+/**
+ * Scheduler for night mode operations on the main thread.
+ */
+internal class MainThreadNightModeScheduler :
+    CarPlayNightModeController.Scheduler {
+
+    private val handler: Handler =
+        Handler(Looper.getMainLooper())
+
+    override fun postDelayed(
+        task: Runnable,
+        delayMillis: Long
+    ) {
         handler.postDelayed(task, delayMillis)
     }
+
     override fun remove(task: Runnable) {
         handler.removeCallbacks(task)
     }
