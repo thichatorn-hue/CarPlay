@@ -2,12 +2,12 @@ package com.shilapi.xcertplay.mfi
 
 import java.io.File
 import java.math.BigInteger
+import java.security.KeyFactory
 import java.security.KeyPairGenerator
 import java.security.PrivateKey
 import java.security.Signature
-import java.security.cert.CertificateFactory
-import java.security.cert.X509Certificate
 import java.security.spec.ECGenParameterSpec
+import java.security.spec.PKCS8EncodedKeySpec
 import java.util.Date
 import org.bouncycastle.asn1.ASN1Encodable
 import org.bouncycastle.asn1.ASN1Integer
@@ -35,19 +35,18 @@ class LocalMfiAuthenticationClient private constructor(
 
     fun signChallenge(challenge: ByteArray): ByteArray {
         require(challenge.size == 32) { "Challenge must be exactly 32 bytes for SHA-256" }
+        
         val signer = Signature.getInstance("SHA256withECDSA")
         signer.initSign(privateKey)
         signer.update(challenge)
         val derSignature = signer.sign()
 
-        // แปลง DER Signature (R และ S) ให้กลับมาเป็นฟอร์แมตดิบ 64 ไบต์ที่ iAP2 คาดหวัง
         val decoder = org.bouncycastle.asn1.ASN1InputStream(derSignature)
         val seq = decoder.readObject() as DERSequence
         val r = (seq.getObjectAt(0) as ASN1Integer).positiveValue.toByteArray()
         val s = (seq.getObjectAt(1) as ASN1Integer).positiveValue.toByteArray()
 
         val rawSignature = ByteArray(64)
-        // จัดตำแหน่ง R และ S ลงในอาร์เรย์ขนาด 64 ไบต์ให้ถูกต้อง (ฝั่งละ 32 ไบต์)
         val rOffset = maxOf(0, r.size - 32)
         val sOffset = maxOf(0, s.size - 32)
         System.arraycopy(r, rOffset, rawSignature, 32 - (r.size - rOffset), r.size - rOffset)
@@ -57,12 +56,11 @@ class LocalMfiAuthenticationClient private constructor(
     }
 
     companion object {
-        fun load(directory: File, onSign: () -> Unit = {}): LocalMfiAuthenticationClient {
+        fun load(directory: File): LocalMfiAuthenticationClient {
             directory.mkdirs()
             val pk8File = File(directory, "identity.pk8")
             val p7bFile = File(directory, "certificate.p7b")
 
-            // ถ้ายังไม่มีไฟล์คีย์หรือใบรับรองในเครื่อง ให้สร้างขึ้นมาใหม่แบบไดนามิกที่ถูกต้องตามหลักคริปโต
             if (!pk8File.exists() || !p7bFile.exists()) {
                 val generator = KeyPairGenerator.getInstance("EC")
                 generator.initialize(ECGenParameterSpec("secp256r1"))
@@ -91,12 +89,11 @@ class LocalMfiAuthenticationClient private constructor(
                 p7bFile.writeBytes(certificate)
             }
 
-            // โหลดคีย์และใบรับรองกลับเข้ามาใช้งาน
             val privateKeyBytes = pk8File.readBytes()
             val certBytes = p7bFile.readBytes()
 
-            val keyFactory = java.security.KeyFactory.getInstance("EC")
-            val privateKey = keyFactory.generatePrivate(java.security.spec.PKCS8EncodedKeySpec(privateKeyBytes))
+            val keyFactory = KeyFactory.getInstance("EC")
+            val privateKey = keyFactory.generatePrivate(PKCS8EncodedKeySpec(privateKeyBytes))
 
             return LocalMfiAuthenticationClient(privateKey, certBytes)
         }
