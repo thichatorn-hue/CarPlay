@@ -1,5 +1,3 @@
-apply(plugin = "com.android.library")
-apply(plugin = "org.jetbrains.kotlin.android")
 
 android {
     namespace = "com.shilapi.xcertplay.common"
