@@ -5,9 +5,7 @@ plugins {
 
 android {
     namespace = "com.shilapi.xcertplay.host"
-    compileSdk {
-        version = release(37)
-    }
+    compileSdk = 37
 
     defaultConfig {
         minSdk = 25
@@ -24,13 +22,16 @@ android {
 
     testOptions {
         unitTests.isIncludeAndroidResources = true
-        // The UI suite covers several SDKs and locale-specific resource sandboxes.
         unitTests.all { it.maxHeapSize = "1g" }
     }
 }
 
 dependencies {
     api(project(":shared"))
+    
+    // ดึงโมดูลย่อยและไลบรารีที่เกี่ยวข้องทั้งหมดในโปรเจกต์มารวมไว้ เพื่อแก้ปัญหา Unresolved reference
+    // (หากใน settings.gradle มีโมดูลอื่นเพิ่ม ให้ระบุเพิ่มตรงนี้ได้ทันทีครับ)
+    
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)
@@ -42,6 +43,7 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.exoplayer.hls)
     implementation(libs.androidx.media3.ui)
+    
     testImplementation(libs.junit)
     testImplementation("org.robolectric:robolectric:4.17")
     testImplementation("org.mockito:mockito-core:5.20.0")
