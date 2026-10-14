@@ -41,7 +41,6 @@ class LocalMfiAuthenticationClient private constructor(
         signer.update(challenge)
         val derSignature = signer.sign()
 
-        // แปลง DER Signature (R และ S) ให้กลับมาเป็นฟอร์แมตดิบ 64 ไบต์ที่ iAP2 คาดหวัง
         val decoder = org.bouncycastle.asn1.ASN1InputStream(derSignature)
         val seq = decoder.readObject() as DERSequence
         val r = (seq.getObjectAt(0) as ASN1Integer).positiveValue.toByteArray()
@@ -62,7 +61,6 @@ class LocalMfiAuthenticationClient private constructor(
             val pk8File = File(directory, "identity.pk8")
             val p7bFile = File(directory, "certificate.p7b")
 
-            // ถ้ายังไม่มีไฟล์คีย์หรือใบรับรอง ให้สร้างใหม่แบบไดนามิกที่ถูกต้องตามมาตรฐานคริปโต
             if (!pk8File.exists() || !p7bFile.exists()) {
                 val generator = KeyPairGenerator.getInstance("EC")
                 generator.initialize(ECGenParameterSpec("secp256r1"))
