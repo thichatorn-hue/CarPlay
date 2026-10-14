@@ -56,7 +56,9 @@ class LocalMfiAuthenticationClient private constructor(
     }
 
     companion object {
-        fun load(directory: File): LocalMfiAuthenticationClient {
+        // รองรับ 2 พารามิเตอร์ เพื่อแก้ปัญหา Too many arguments จาก LocalMfiProbe
+        fun load(directory: File, onSign: () -> Unit = {}): LocalMfiAuthenticationClient {
+            onSign()
             directory.mkdirs()
             val pk8File = File(directory, "identity.pk8")
             val p7bFile = File(directory, "certificate.p7b")
