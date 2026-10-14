@@ -53,7 +53,7 @@ data class AirPlayIcon(
 
 /** Immutable accessory configuration consumed by the AirPlay session server. */
 data class AirPlayConfig(
-    val deviceName: NISSAN,
+    val deviceName: String,
     val deviceId: String,
     val btMac: String,
     val sourceVersion: String,
