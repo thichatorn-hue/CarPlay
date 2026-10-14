@@ -71,9 +71,9 @@ data class AirPlayConfig(
      * version or absent MediaCodec encoder alone must not remove the wireless Opus formats.
      */
     val microphoneOpus: Boolean = true,
-    val manufacturer: String = "xcertplay",
-    val model: String = "xcertplay",
-    val oemLabel: String = "xcertplay",
+    val manufacturer: String = "NISSAN",
+    val model: String = "NISSAN",
+    val oemLabel: String = "NISSAN",
     val icons: List<AirPlayIcon> = emptyList(),
     /** iOS 27 video in car (see [VideoInCar]); video plays only while [VideoInCar.allowed]. */
     val videoInCar: Boolean = false,
